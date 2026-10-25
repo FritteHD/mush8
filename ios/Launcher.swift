@@ -148,7 +148,7 @@ func broadcastAvailable() -> Bool {
 
 let gameFiles = [
     GameFile(id: "Base Game", name: "base.nsp"),
-    GameFile(id: "Update", name: "upd4-0-1.nsp"),
+    GameFile(id: "Update", name: "update.nsp"),
     GameFile(id: "Booster Course Pass", name: "dlc.nsp", optional: true),
     GameFile(id: "Console Keys", name: "prod.keys"),
     GameFile(id: "Firmware", name: "Firmware"),
@@ -202,12 +202,12 @@ final class Files: ObservableObject {
         if n.hasSuffix(".nsp") {
             switch nspKind(url) {
             case "base": return "base.nsp"
-            case "update": return "upd4-0-1.nsp"
+            case "update": return "update.nsp"
             case "dlc": return "dlc.nsp"
             case "other": return url.lastPathComponent
             default: break
             }
-            if n.contains("upd") || n.contains("update") || n.contains("v4") { return "upd4-0-1.nsp" }
+            if n.contains("upd") || n.contains("update") { return "update.nsp" }
             if n.contains("dlc") || n.contains("booster") || n.contains("aoc") { return "dlc.nsp" }
             if n.contains("base") || n.contains("mario") { return "base.nsp" }
         }
