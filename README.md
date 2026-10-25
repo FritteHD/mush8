@@ -85,7 +85,7 @@ Any phone's browser can be a controller too, no app needed (Android included) : 
 - Normal : every button, for the menus
 - Drive : steering, item, drift and a small A for the start, made for the game's auto-accelerate. The stick stays in place (Fixed) or appears under your thumb (Floating)
 
-Add the page to the home screen (Share → Add to Home Screen) to get rid of the address bar. There are no motion controls, browsers only share them with HTTPS pages
+Add the page to the home screen (Share → Add to Home Screen) to get rid of the address bar
 
 ## Limitations
 - free Apple IDs and the `.ipa` (AltStore / SideStore) don't get the extended virtual addressing entitlement, so the game runs with a smaller 5 GB memory layout there (a paid account gets the full one)

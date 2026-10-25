@@ -237,8 +237,14 @@ function send(force) {
   if ((force || s !== sent) && ws && ws.readyState === 1) { ws.send(s); sent = s; }
 }
 function setStatus(text, ok) { statusEl.textContent = text; statusEl.classList.toggle('ok', !!ok); }
+let sid = '';
+try { sid = localStorage.getItem('mush8pad-id') || ''; } catch (e) {}
+if (!/^[0-9a-f]{16}$/.test(sid)) {
+  sid = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join('');
+  try { localStorage.setItem('mush8pad-id', sid); } catch (e) {}
+}
 function connect() {
-  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws = new WebSocket('ws://' + location.host + '/ws?id=' + sid);
   ws.onopen = () => { setStatus(t.waiting); send(true); };
   ws.onmessage = (m) => {
     lastAck = Date.now();

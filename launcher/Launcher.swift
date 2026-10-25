@@ -500,7 +500,7 @@ struct LauncherView: View {
                     labeled("Browser controllers", s.browserPads ? "Phones open an address below in their browser on the same Wi-Fi and join as players, no app needed. The name stays the same, the IP can change" : "Any phone's browser can be a controller, no app needed")
                 }
                 if s.browserPads {
-                    addressRow("Phone address", phonePadHost)
+                    addressRow("Mac's address", phonePadHost)
                     addressRow("Or by IP", sys.lan.map { "http://\($0):8088" })
                 }
             }

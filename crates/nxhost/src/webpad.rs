@@ -34,18 +34,25 @@ fn serve(listener: TcpListener) {
     });
 }
 
+struct Request {
+    path: String,
+    id: Option<u64>,
+    key: Option<String>,
+    rest: Vec<u8>,
+}
+
 fn client(mut s: TcpStream) {
     let Ok(peer) = s.peer_addr() else { return };
     let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
-    let Some((path, key, rest)) = request(&mut s) else { return };
-    match (path.as_str(), key) {
-        ("/ws", Some(key)) => socket(s, peer, &key, rest),
+    let Some(r) = request(&mut s) else { return };
+    match (r.path.as_str(), r.key) {
+        ("/ws", Some(key)) => socket(s, peer, r.id.unwrap_or_else(|| remote::addr_id(peer)), &key, r.rest),
         ("/" | "/index.html", _) => respond(&mut s, "200 OK", "text/html; charset=utf-8", PAGE.as_bytes()),
         _ => respond(&mut s, "404 Not Found", "text/plain", b"not found"),
     }
 }
 
-fn request(s: &mut TcpStream) -> Option<(String, Option<String>, Vec<u8>)> {
+fn request(s: &mut TcpStream) -> Option<Request> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 2048];
     let end = loop {
@@ -60,12 +67,14 @@ fn request(s: &mut TcpStream) -> Option<(String, Option<String>, Vec<u8>)> {
     };
     let head = String::from_utf8_lossy(&buf[..end]).into_owned();
     let mut lines = head.split("\r\n");
-    let path = lines.next()?.split(' ').nth(1)?.split('?').next()?.to_string();
+    let target = lines.next()?.split(' ').nth(1)?;
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let id = query.split('&').find_map(|kv| kv.strip_prefix("id=")).filter(|v| (1..=16).contains(&v.len())).and_then(|v| u64::from_str_radix(v, 16).ok());
     let key = lines
         .filter_map(|l| l.split_once(':'))
         .find(|(k, _)| k.trim().eq_ignore_ascii_case("sec-websocket-key"))
         .map(|(_, v)| v.trim().to_string());
-    Some((path, key, buf[end..].to_vec()))
+    Some(Request { path: path.to_string(), id, key, rest: buf[end..].to_vec() })
 }
 
 fn respond(s: &mut TcpStream, status: &str, kind: &str, body: &[u8]) {
@@ -73,7 +82,7 @@ fn respond(s: &mut TcpStream, status: &str, kind: &str, body: &[u8]) {
     let _ = s.write_all(head.as_bytes()).and_then(|_| s.write_all(body));
 }
 
-fn socket(mut s: TcpStream, peer: SocketAddr, key: &str, mut buf: Vec<u8>) {
+fn socket(mut s: TcpStream, peer: SocketAddr, id: u64, key: &str, mut buf: Vec<u8>) {
     let reply = format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n", accept(key));
     if s.write_all(reply.as_bytes()).is_err() || s.set_read_timeout(Some(Duration::from_millis(100))).is_err() {
         return;
@@ -93,7 +102,7 @@ fn socket(mut s: TcpStream, peer: SocketAddr, key: &str, mut buf: Vec<u8>) {
             match op {
                 0x1 => {
                     if let Some(pad) = parse(&payload) {
-                        remote::feed(peer, pad);
+                        remote::feed(peer, id, pad);
                         heard = Instant::now();
                     }
                 }
@@ -267,7 +276,7 @@ mod tests {
 
         let mut ws = TcpStream::connect(at).unwrap();
         let me = ws.local_addr().unwrap();
-        ws.write_all(b"GET /ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n").unwrap();
+        ws.write_all(b"GET /ws?id=00000000000000ff HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n").unwrap();
         let mut head = [0u8; 256];
         let n = ws.read(&mut head).unwrap();
         let head = String::from_utf8_lossy(&head[..n]);
@@ -281,6 +290,7 @@ mod tests {
         let pad = fed.expect("pad never reached remote").1;
         assert_eq!((pad.buttons, pad.sticks), (129, [0.5, -1.0, 0.0, 0.0]));
         assert!(remote::is_web(me));
+        assert_eq!(remote::session(me), Some(0xff));
 
         remote::set_player(me, 2);
         ws.set_read_timeout(Some(Duration::from_secs(2))).unwrap();

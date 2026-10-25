@@ -55,6 +55,7 @@ struct Phone {
     player: Option<u8>,
     acked: Option<(Instant, u8)>,
     web: bool,
+    id: u64,
 }
 
 static PHONES: Mutex<Vec<Phone>> = Mutex::new(Vec::new());
@@ -85,7 +86,7 @@ pub fn host() {
                         Some(p) => (p.pad, p.seen) = (pad, now),
                         None => {
                             eprintln!("[phone] iPhone controller connected from {addr}");
-                            phones.push(Phone { addr, pad, seen: now, player: None, acked: None, web: false });
+                            phones.push(Phone { addr, pad, seen: now, player: None, acked: None, web: false, id: addr_id(addr) });
                         }
                     }
                 }
@@ -141,13 +142,29 @@ pub fn set_player(addr: SocketAddr, player: u8) {
     }
 }
 
-pub fn feed(addr: SocketAddr, pad: Pad) {
+pub fn addr_id(addr: SocketAddr) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    addr.hash(&mut h);
+    h.finish()
+}
+
+pub fn session(addr: SocketAddr) -> Option<u64> {
+    PHONES.lock().unwrap().iter().find(|p| p.addr == addr).map(|p| p.id)
+}
+
+pub fn feed(addr: SocketAddr, id: u64, pad: Pad) {
     let mut phones = PHONES.lock().unwrap();
     match phones.iter_mut().find(|p| p.addr == addr) {
         Some(p) => (p.pad, p.seen) = (pad, Instant::now()),
         None => {
-            eprintln!("[phone] browser controller connected from {addr}");
-            phones.push(Phone { addr, pad, seen: Instant::now(), player: None, acked: None, web: true });
+            if let Some(old) = phones.iter().position(|p| p.web && p.id == id && p.seen.elapsed() > Duration::from_millis(500)) {
+                eprintln!("[phone] browser controller at {} came back from {addr}", phones[old].addr);
+                phones.remove(old);
+            } else {
+                eprintln!("[phone] browser controller connected from {addr}");
+            }
+            phones.push(Phone { addr, pad, seen: Instant::now(), player: None, acked: None, web: true, id });
         }
     }
 }

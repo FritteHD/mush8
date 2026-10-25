@@ -192,9 +192,26 @@ pub fn screen_sample() -> Vec<(u32, f32, f32, u32)> {
 pub static SLOT_NAMES: std::sync::Mutex<[Option<String>; MAX_PLAYERS]> = std::sync::Mutex::new([const { None }; MAX_PLAYERS]);
 pub static FILL_TO: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+const HOLD: std::time::Duration = std::time::Duration::from_secs(120);
+
+type Kept = [Option<(u64, std::time::Instant)>; MAX_PLAYERS];
+
+fn open(slots: &[Option<Ctl>; MAX_PLAYERS], phones: &[Option<std::net::SocketAddr>; MAX_PLAYERS]) -> [bool; MAX_PLAYERS] {
+    std::array::from_fn(|i| slots[i].is_none() && phones[i].is_none())
+}
+
+fn pick(open: [bool; MAX_PLAYERS], kept: &Kept, session: Option<u64>) -> Option<usize> {
+    let free = || (0..MAX_PLAYERS).filter(move |&i| open[i]);
+    let mine = |i: &usize| session.is_some() && kept[*i].is_some_and(|(k, _)| Some(k) == session);
+    let held = |i: &usize| kept[*i].is_some_and(|(_, at)| at.elapsed() < HOLD);
+    free().find(mine).or_else(|| free().find(|i| !held(i))).or_else(|| free().min_by_key(|&i| kept[i].map(|(_, at)| at)))
+}
+
 pub struct Pads {
     slots: [Option<Ctl>; MAX_PLAYERS],
     phones: [Option<std::net::SocketAddr>; MAX_PLAYERS],
+    sessions: [Option<u64>; MAX_PLAYERS],
+    kept: Kept,
     extra: usize,
     fill: usize,
     touch_init: bool,
@@ -209,6 +226,8 @@ impl Pads {
         Self {
             slots: Default::default(),
             phones: Default::default(),
+            sessions: Default::default(),
+            kept: Default::default(),
             extra,
             fill: 0,
             touch_init: false,
@@ -255,15 +274,15 @@ impl Pads {
                 if s.is_some_and(|a| !phones.iter().any(|(p, _)| *p == a)) {
                     eprintln!("[input] iPhone controller left player {}", i + 1);
                     *s = None;
+                    self.kept[i] = self.sessions[i].take().map(|k| (k, std::time::Instant::now()));
                     changed = true;
                 }
             }
-            let free = |slots: &[Option<_>; MAX_PLAYERS], phones: &[Option<_>; MAX_PLAYERS]| (0..MAX_PLAYERS).find(|&i| slots[i].is_none() && phones[i].is_none());
             for c in connected {
                 if self.slots.iter().flatten().any(|s| matches!(s, Ctl::Apple(s) if std::ptr::eq(&**s, &*c))) {
                     continue;
                 }
-                if let Some(i) = free(&self.slots, &self.phones) {
+                if let Some(i) = pick(open(&self.slots, &self.phones), &self.kept, None) {
                     if i < 4 {
                         c.setPlayerIndex(GCControllerPlayerIndex(i as isize));
                     }
@@ -274,6 +293,7 @@ impl Pads {
                     }
                     eprintln!("[input] {} is player {}", c.vendorName().map_or("gamepad".into(), |n| n.to_string()), i + 1);
                     self.slots[i] = Some(Ctl::Apple(c));
+                    self.kept[i] = None;
                     changed = true;
                 }
             }
@@ -282,7 +302,7 @@ impl Pads {
                 if self.slots.iter().flatten().any(|s| matches!(s, Ctl::Sdl(p) if p.id() == id)) {
                     continue;
                 }
-                let Some(i) = free(&self.slots, &self.phones) else { break };
+                let Some(i) = pick(open(&self.slots, &self.phones), &self.kept, None) else { break };
                 let Some(pad) = self.sdl_failed.open(id, || crate::sdl::Pad::open(id)) else { continue };
                 if i < 4 {
                     pad.set_player(i);
@@ -292,18 +312,23 @@ impl Pads {
                 }
                 eprintln!("[input] {} is player {}", pad.name(), i + 1);
                 self.slots[i] = Some(Ctl::Sdl(pad));
+                self.kept[i] = None;
                 changed = true;
             }
             for &(addr, _) in &phones {
                 if self.phones.contains(&Some(addr)) {
                     continue;
                 }
-                let Some(i) = free(&self.slots, &self.phones) else {
+                let session = crate::remote::session(addr);
+                let Some(i) = pick(open(&self.slots, &self.phones), &self.kept, session) else {
                     crate::remote::set_player(addr, 0);
                     continue;
                 };
-                eprintln!("[input] iPhone controller is player {}", i + 1);
+                let back = session.is_some() && self.kept[i].is_some_and(|(k, _)| Some(k) == session);
+                eprintln!("[input] iPhone controller is player {}{}", i + 1, if back { " again" } else { "" });
                 self.phones[i] = Some(addr);
+                self.sessions[i] = session;
+                self.kept[i] = None;
                 crate::remote::set_player(addr, i as u8 + 1);
                 changed = true;
             }
@@ -543,5 +568,37 @@ mod tests {
         assert_eq!(PadDriver::parse(Some("sdl")), PadDriver::Sdl);
         assert_eq!(PadDriver::parse(Some("SDL")), PadDriver::Apple);
         assert_eq!(PadDriver::parse(Some("")), PadDriver::Apple);
+    }
+
+    #[test]
+    fn returning_phones_get_their_slot_back() {
+        let now = std::time::Instant::now();
+        let mut kept: Kept = Default::default();
+        kept[0] = Some((7, now));
+        kept[1] = Some((9, now));
+        let all = [true; MAX_PLAYERS];
+        assert_eq!(pick(all, &kept, Some(9)), Some(1));
+        assert_eq!(pick(all, &kept, Some(7)), Some(0));
+        assert_eq!(pick(all, &kept, Some(5)), Some(2));
+        assert_eq!(pick(all, &kept, None), Some(2));
+    }
+
+    #[test]
+    fn newcomers_take_a_kept_slot_only_when_needed() {
+        let now = std::time::Instant::now();
+        let mut kept: Kept = Default::default();
+        let mut open = [false; MAX_PLAYERS];
+        open[1] = true;
+        open[3] = true;
+        kept[1] = Some((7, now));
+        kept[3] = Some((8, now.checked_sub(std::time::Duration::from_secs(5)).unwrap()));
+        assert_eq!(pick(open, &kept, None), Some(3));
+        kept[3] = None;
+        assert_eq!(pick(open, &kept, None), Some(3));
+        kept[1] = Some((7, now.checked_sub(HOLD * 2).unwrap()));
+        kept[3] = Some((8, now));
+        assert_eq!(pick(open, &kept, None), Some(1));
+        assert_eq!(pick(open, &kept, Some(8)), Some(3));
+        assert_eq!(pick([false; MAX_PLAYERS], &kept, Some(7)), None);
     }
 }
