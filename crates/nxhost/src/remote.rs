@@ -86,7 +86,7 @@ pub fn host() {
                         Some(p) => (p.pad, p.seen) = (pad, now),
                         None => {
                             eprintln!("[phone] iPhone controller connected from {addr}");
-                            phones.push(Phone { addr, pad, seen: now, player: None, acked: None, web: false, id: addr_id(addr) });
+                            phones.push(Phone { addr, pad, seen: now, player: None, acked: None, web: false, id: device_id(addr) });
                         }
                     }
                 }
@@ -142,10 +142,10 @@ pub fn set_player(addr: SocketAddr, player: u8) {
     }
 }
 
-pub fn addr_id(addr: SocketAddr) -> u64 {
+pub fn device_id(addr: SocketAddr) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    addr.hash(&mut h);
+    addr.ip().hash(&mut h);
     h.finish()
 }
 
@@ -153,7 +153,8 @@ pub fn session(addr: SocketAddr) -> Option<u64> {
     PHONES.lock().unwrap().iter().find(|p| p.addr == addr).map(|p| p.id)
 }
 
-pub fn feed(addr: SocketAddr, id: u64, pad: Pad) {
+pub fn feed(addr: SocketAddr, pad: Pad) {
+    let id = device_id(addr);
     let mut phones = PHONES.lock().unwrap();
     match phones.iter_mut().find(|p| p.addr == addr) {
         Some(p) => (p.pad, p.seen) = (pad, Instant::now()),
@@ -312,5 +313,27 @@ mod tests {
         assert_eq!((m.accel, m.gyro), (n.accel, n.gyro));
         assert!(Pad::decode(&Pad { motion: None, ..p }.encode()).unwrap().motion.is_none());
         assert!(Pad::decode(b"nope").is_none());
+    }
+
+    #[test]
+    fn same_device_replaces_its_silent_connection() {
+        let pad = Pad::default();
+        let at = |s: &str| s.parse::<SocketAddr>().unwrap();
+        let (safari, app, other) = (at("10.9.9.1:50001"), at("10.9.9.1:50002"), at("10.9.9.2:50003"));
+        assert_eq!(device_id(safari), device_id(app));
+        assert_ne!(device_id(safari), device_id(other));
+        feed(safari, pad);
+        feed(other, pad);
+        feed(app, pad);
+        let listed = |a: SocketAddr| connected().iter().any(|(p, _)| *p == a);
+        assert!(listed(safari) && listed(app) && listed(other));
+        forget(app);
+        std::thread::sleep(Duration::from_millis(600));
+        feed(other, pad);
+        feed(app, pad);
+        assert!(!listed(safari) && listed(app) && listed(other));
+        assert_eq!(session(app), Some(device_id(safari)));
+        forget(app);
+        forget(other);
     }
 }

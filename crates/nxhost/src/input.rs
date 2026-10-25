@@ -203,7 +203,8 @@ fn open(slots: &[Option<Ctl>; MAX_PLAYERS], phones: &[Option<std::net::SocketAdd
 fn pick(open: [bool; MAX_PLAYERS], kept: &Kept, session: Option<u64>) -> Option<usize> {
     let free = || (0..MAX_PLAYERS).filter(move |&i| open[i]);
     let mine = |i: &usize| session.is_some() && kept[*i].is_some_and(|(k, _)| Some(k) == session);
-    let held = |i: &usize| kept[*i].is_some_and(|(_, at)| at.elapsed() < HOLD);
+    let alone = open.iter().all(|&o| o);
+    let held = |i: &usize| !alone && kept[*i].is_some_and(|(_, at)| at.elapsed() < HOLD);
     free().find(mine).or_else(|| free().find(|i| !held(i))).or_else(|| free().min_by_key(|&i| kept[i].map(|(_, at)| at)))
 }
 
@@ -576,11 +577,12 @@ mod tests {
         let mut kept: Kept = Default::default();
         kept[0] = Some((7, now));
         kept[1] = Some((9, now));
-        let all = [true; MAX_PLAYERS];
-        assert_eq!(pick(all, &kept, Some(9)), Some(1));
-        assert_eq!(pick(all, &kept, Some(7)), Some(0));
-        assert_eq!(pick(all, &kept, Some(5)), Some(2));
-        assert_eq!(pick(all, &kept, None), Some(2));
+        let mut open = [true; MAX_PLAYERS];
+        open[4] = false;
+        assert_eq!(pick(open, &kept, Some(9)), Some(1));
+        assert_eq!(pick(open, &kept, Some(7)), Some(0));
+        assert_eq!(pick(open, &kept, Some(5)), Some(2));
+        assert_eq!(pick(open, &kept, None), Some(2));
     }
 
     #[test]
@@ -600,5 +602,18 @@ mod tests {
         assert_eq!(pick(open, &kept, None), Some(1));
         assert_eq!(pick(open, &kept, Some(8)), Some(3));
         assert_eq!(pick([false; MAX_PLAYERS], &kept, Some(7)), None);
+    }
+
+    #[test]
+    fn a_lone_controller_takes_the_first_slot() {
+        let now = std::time::Instant::now();
+        let mut kept: Kept = Default::default();
+        kept[0] = Some((7, now));
+        assert_eq!(pick([true; MAX_PLAYERS], &kept, Some(9)), Some(0));
+        assert_eq!(pick([true; MAX_PLAYERS], &kept, None), Some(0));
+        let mut open = [true; MAX_PLAYERS];
+        open[1] = false;
+        assert_eq!(pick(open, &kept, Some(9)), Some(2));
+        assert_eq!(pick(open, &kept, Some(7)), Some(0));
     }
 }
