@@ -314,6 +314,7 @@ impl Replay<'_> {
     }
 
     fn primitives(&mut self, d: &super::Draw) -> Result<Prim, &'static str> {
+        d.validate_indices()?;
         let (ty, convert): (MTLPrimitiveType, Option<fn(&[u32]) -> Vec<u32>>) = match d.mode {
             0 => (MTLPrimitiveType::Point, None),
             1 => (MTLPrimitiveType::Line, None),
