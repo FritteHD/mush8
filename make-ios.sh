@@ -37,7 +37,7 @@ RES=target/ios-res
 cargo build --release
 UPDATE=update.nsp
 [ -e "$UPDATE" ] || [ ! -e upd4-0-1.nsp ] || UPDATE=upd4-0-1.nsp
-SOURCE="$UPDATE $(stat -L -f %z "$UPDATE" 2>/dev/null)"
+SOURCE="$(stat -L -f %z "$UPDATE" 2>/dev/null)"
 if [ "$(cat work/v-upd/source 2>/dev/null)" != "$SOURCE" ] || [ ! -f work/v-upd/exefs/main ]; then
   rm -rf work/v-upd
   mkdir -p work/v-upd

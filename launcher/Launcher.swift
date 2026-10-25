@@ -53,7 +53,7 @@ func gameCodeReady(in folder: URL) -> Bool {
 func updateSource(_ s: Settings) -> String {
     let url = s.folderURL.appendingPathComponent(s.update).resolvingSymlinksInPath()
     let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-    return "\(s.update) \(size)"
+    return "\(size)"
 }
 
 func preparedSource(in folder: URL) -> String? {
