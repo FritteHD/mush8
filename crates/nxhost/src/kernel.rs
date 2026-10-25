@@ -621,7 +621,7 @@ pub fn signal_to_address(addr: u64, kind: u32, value: i32, count: i32) -> u32 {
             }
         }
         2 => {
-            let others = (waiting - 1).min(count + 1);
+            let others = (waiting - 1).min(count.saturating_add(1));
             let new = if waiting == 0 {
                 value.wrapping_add(1)
             } else if count <= 0 {
