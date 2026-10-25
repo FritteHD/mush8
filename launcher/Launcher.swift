@@ -50,11 +50,27 @@ func gameCodeReady(in folder: URL) -> Bool {
     return made.trimmingCharacters(in: .whitespacesAndNewlines) == nxpatchStamps[tool]?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+func updateSource(_ s: Settings) -> String {
+    let url = s.folderURL.appendingPathComponent(s.update).resolvingSymlinksInPath()
+    let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    return "\(s.update) \(size)"
+}
+
+func preparedSource(in folder: URL) -> String? {
+    try? String(contentsOf: folder.appendingPathComponent("work/v-upd/source"), encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func preparedVersion(in folder: URL) -> String? {
+    guard let d = try? Data(contentsOf: folder.appendingPathComponent("work/v-upd/control/control.nacp")), d.count >= 0x3070 else { return nil }
+    let v = String(decoding: d[0x3060..<0x3070].prefix { $0 != 0 }, as: UTF8.self)
+    return v.isEmpty ? nil : v
+}
+
 final class Settings: ObservableObject {
     @Published var folder = ""
     @Published var keys = "prod.keys"
     @Published var base = "base.nsp"
-    @Published var update = "upd4-0-1.nsp"
+    @Published var update = "update.nsp"
     @Published var dlc = "dlc.nsp"
     @Published var network = "off"
     @Published var lanInterface = ""
@@ -173,7 +189,8 @@ func checks(_ s: Settings) -> [Check] {
         Check(id: "Base Game", ok: has(s.base), detail: has(s.base) ? s.base : "not found"),
         Check(id: "Update", ok: has(s.update), detail: has(s.update) ? s.update : "not found"),
         Check(id: "Booster Course Pass", ok: has(s.dlc), detail: has(s.dlc) ? s.dlc : "none", optional: true),
-        Check(id: "Game code for this Mac", ok: gameCodeReady(in: f), detail: "work/v-upd/patched"),
+        Check(id: "Game code for this Mac", ok: gameCodeReady(in: f) && preparedSource(in: f) == updateSource(s),
+              detail: preparedVersion(in: f).map { "work/v-upd/patched (\($0))" } ?? "work/v-upd/patched"),
         Check(id: "Precompiled shaders", ok: (shaders ?? 0) > 0,
               detail: shaders == 0 ? "none, install the Metal Toolchain and Prepare again" : "work/shader_cache.noindex", optional: shaders == 0),
         Check(id: "Console Keys", ok: has(s.keys), detail: has(s.keys) ? s.keys : "not found"),
@@ -189,7 +206,11 @@ final class Preparer: ObservableObject {
     func run(_ s: Settings, done: @escaping () -> Void) {
         let f = s.folderURL
         var steps: [(URL, [String])] = []
-        if !FileManager.default.fileExists(atPath: f.appendingPathComponent("work/v-upd/exefs/main").path) {
+        let fm = FileManager.default
+        if preparedSource(in: f) != updateSource(s) || !fm.fileExists(atPath: f.appendingPathComponent("work/v-upd/exefs/main").path) {
+            try? fm.removeItem(at: f.appendingPathComponent("work/v-upd"))
+            try? fm.createDirectory(at: f.appendingPathComponent("work/v-upd"), withIntermediateDirectories: true)
+            try? updateSource(s).write(to: f.appendingPathComponent("work/v-upd/source"), atomically: true, encoding: .utf8)
             steps.append((tool("nxfs", in: f), ["extract", "--keys", s.keys, "--base", s.base, "--update", s.update, "--out", "work/v-upd"]))
         }
         if !gameCodeReady(in: f) {

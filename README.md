@@ -13,7 +13,7 @@ On top of that, Mush8 adds LAN Play over the internet ([lan-play.com](https://ww
 Because Nintendo ninjas are always watching, you will need your own dump :
 - `prod.keys`
 - the base game (`.nsp`)
-- update 4.0.1 (`.nsp`)
+- update 4.0.1 or 3.0.5 (`.nsp`). To play LAN with a Switch, use the same update as the Switch
 - a `Firmware` folder dumped from your Switch (fonts, Miis)
 - optionally, the Booster Course Pass, named `dlc.nsp`
 
