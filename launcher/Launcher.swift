@@ -68,7 +68,6 @@ final class Settings: ObservableObject {
     @Published var motion = false
     @Published var phonePads = true
     @Published var browserPads = false
-    @Published var padTerminal = false
     @Published var handheld = false
     @Published var uhd = false
     @Published var split60 = true
@@ -99,7 +98,6 @@ final class Settings: ObservableObject {
         motion = j["motion_controls"] as? Bool ?? false
         phonePads = j["phone_pads"] as? Bool ?? true
         browserPads = j["browser_pads"] as? Bool ?? false
-        padTerminal = j["browser_pads_terminal"] as? Bool ?? false
         handheld = j["handheld"] as? Bool ?? false
         uhd = j["uhd"] as? Bool ?? false
         split60 = j["split60"] as? Bool ?? true
@@ -116,7 +114,6 @@ final class Settings: ObservableObject {
             "lan_interface": lanInterface, "lanplay_server": lanPlayServer, "pipeline_archive": pipelineArchive,
             "prewarm_pipelines": prewarm, "rumble": rumble, "spatial_audio": spatial, "background_compile": backgroundCompile, "motion_controls": motion,
             "handheld": handheld, "uhd": uhd, "split60": split60, "phone_pads": phonePads, "browser_pads": browserPads,
-            "browser_pads_terminal": padTerminal,
             "aspect": fillScreen ? "fill" : "16:9", "hud": hudAtEdges ? "edges" : "center", "hud_scale": hudScale,
         ]
         try? FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
@@ -144,6 +141,7 @@ final class Settings: ObservableObject {
         if !backgroundCompile { env["NX_SYNC_SHADERS"] = "1" }
         env["NX_MOTION"] = motion ? "1" : "0"
         env["NX_PHONE_PADS"] = phonePads ? "1" : "0"
+        if phonePads && browserPads { env["NX_BROWSER_PADS"] = "1" }
         if handheld { env["NX_HANDHELD"] = "1" } else if uhd { env["NX_4K"] = "1" }
         if split60 { env["NX_SPLIT60"] = "1" }
         if fillScreen { env["NX_ASPECT"] = "auto" }
@@ -282,7 +280,6 @@ func systemAvailableMemory() -> UInt64 {
 
 func bytes(_ n: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .memory) }
 
-// same as phonepad.py: the address of the interface the default route leaves from, nothing is sent
 func lanIP() -> String? {
     let fd = socket(AF_INET, SOCK_DGRAM, 0)
     guard fd >= 0 else { return nil }
@@ -319,27 +316,6 @@ final class SystemInfo: ObservableObject {
 
 let phonePadHost = "http://\((SCDynamicStoreCopyLocalHostName(nil) as String?) ?? "this-mac").local:8088"
 
-// started right before the exec into the game, which keeps our pid, so the pad stops by itself once the game quits
-func startPhonePad(inTerminal: Bool) {
-    guard let script = Bundle.main.url(forResource: "phonepad", withExtension: nil)?.appendingPathComponent("phonepad.py") else { return }
-    let args = ["/usr/bin/python3", "-I", script.path, "--exit-with-pid", String(getpid())]
-    let p = Process()
-    if inTerminal {
-        // a .command file opens in Terminal without asking for automation access, -g keeps it behind the game
-        let cmd = supportURL.appendingPathComponent("phonepad.command")
-        let line = args.map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }.joined(separator: " ")
-        try? "#!/bin/sh\nclear\nexec \(line)\n".write(to: cmd, atomically: true, encoding: .utf8)
-        chmod(cmd.path, 0o755)
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        p.arguments = ["-g", "-a", "Terminal", cmd.path]
-    } else {
-        p.executableURL = URL(fileURLWithPath: args[0])
-        p.arguments = Array(args.dropFirst())
-    }
-    try? p.run()
-    if inTerminal { p.waitUntilExit() }
-}
-
 func launch(_ s: Settings) -> String {
     FileManager.default.changeCurrentDirectoryPath(s.folder)
     for (k, v) in s.environment { setenv(k, v, 1) }
@@ -352,7 +328,6 @@ func launch(_ s: Settings) -> String {
         dup2(fd, STDERR_FILENO)
         close(fd)
     }
-    if s.phonePads && s.browserPads { startPhonePad(inTerminal: s.padTerminal) }
     let game = tool("nxhost", in: s.folderURL).path
     var argv: [UnsafeMutablePointer<CChar>?] = ([game] + s.arguments).map { strdup($0) } + [nil]
     execv(game, &argv)
@@ -489,8 +464,6 @@ struct LauncherView: View {
                     addressRow("Phone address", phonePadHost)
                     addressRow("Or by IP", sys.lan.map { "http://\($0):8088" })
                     caption("Open one in the phone's browser on the same Wi-Fi, it joins as a player, no app needed. The name stays the same, the IP can change")
-                    Toggle("Show pad events in Terminal", isOn: $s.padTerminal)
-                    caption(s.padTerminal ? "A Terminal window behind the game lists the phones joining and leaving" : "The pad's messages go to the Mush8 log")
                 } else {
                     caption("Any phone's browser can be a controller, no app needed")
                 }

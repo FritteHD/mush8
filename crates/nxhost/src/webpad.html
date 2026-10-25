@@ -1,6 +1,6 @@
+<!-- Mush8 - webpad.html -->
+<!-- Constantin Clerc (c22dev) - 0.1 -->
 <!doctype html>
-<!-- Mush8 - pad.html -->
-<!-- Touch controller served by phonepad.py: Normal mode has every button, Drive mode only steering, item, drift and A -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -17,7 +17,6 @@
     font-family: -apple-system, system-ui, sans-serif; overflow: hidden;
     touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   }
-  /* exposes the notch inset to edgeX(), every control is position: fixed so this moves nothing */
   body { padding-left: env(safe-area-inset-left); box-sizing: border-box; }
   #top {
     position: fixed; top: calc(env(safe-area-inset-top) + 6px); left: 50%; transform: translateX(-50%);
@@ -59,7 +58,6 @@
   .drive-only { display: none; }
   body.drive .drive-only { display: flex; }
   body.drive .normal-only { display: none; }
-  /* the floating stick's centre never spawns left of this line */
   #edge {
     display: none; position: fixed; top: 22vmin; bottom: 4vmin; width: 0;
     border-left: 2px dashed #3a3a3a; pointer-events: none;
@@ -131,7 +129,6 @@ const lang = (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' 
 const t = T[lang];
 document.documentElement.lang = lang;
 for (const el of document.querySelectorAll('[data-t]')) el.textContent = t[el.dataset.t];
-// bits from crates/nxhost/src/input.rs
 const BITS = { A: 1, B: 2, X: 4, Y: 8, L: 64, R: 128, ZL: 256, ZR: 512, PLUS: 1024, MINUS: 2048 };
 const base = document.getElementById('base'), knob = document.getElementById('knob'), statusEl = document.getElementById('status');
 const edge = document.getElementById('edge');
@@ -140,7 +137,6 @@ let stickId = null, origin = null, lx = 0, ly = 0, buttons = 0, sent = '', lastA
 let mode = 'normal', stickStyle = 'fixed';
 
 const radius = () => Math.min(innerWidth, innerHeight) * (mode === 'drive' ? 0.22 : 0.18);
-// leftmost spot for the floating stick's centre, so a full left turn still fits on screen
 const edgeX = () => base.offsetWidth / 2 + 12 + (parseFloat(getComputedStyle(document.body).paddingLeft) || 0);
 function restStick() {
   base.style.left = (innerWidth * 0.2) + 'px';
@@ -161,7 +157,6 @@ function moveStick(t) {
   knob.style.transform = `translate(${dx}px, ${dy}px)`;
   lx = dx / r; ly = -dy / r;
 }
-// the switches at the top get normal clicks, everything else is handled as raw touches
 const onUi = (e) => e.target.closest && e.target.closest('.ui');
 function start(e) {
   if (onUi(e)) return;
@@ -171,7 +166,6 @@ function start(e) {
     if (!bit && stickId === null && t.clientX < innerWidth * 0.55) {
       stickId = t.identifier;
       if (mode === 'drive' && stickStyle === 'fixed') {
-        // a touch that lands too far left still steers left
         const r = base.getBoundingClientRect();
         origin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       } else {
@@ -221,7 +215,6 @@ function setMode(m) {
   mode = m === 'drive' ? 'drive' : 'normal';
   document.body.classList.toggle('drive', mode === 'drive');
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('active', b.dataset.mode === mode);
-  // let go of everything, so no button stays pressed across the switch
   held.clear();
   stickId = null; lx = ly = 0;
   restStick();
@@ -254,7 +247,6 @@ function connect() {
   };
   ws.onclose = () => { player = null; setStatus(t.lost); setTimeout(connect, 1000); };
 }
-// Mush8 drops a controller after 3 s of silence, so keep sending while the page is open
 setInterval(() => {
   send(true);
   if (player !== null && Date.now() - lastAck > 2000) { player = null; setStatus(t.stale); }

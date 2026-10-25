@@ -54,6 +54,7 @@ struct Phone {
     seen: Instant,
     player: Option<u8>,
     acked: Option<(Instant, u8)>,
+    web: bool,
 }
 
 static PHONES: Mutex<Vec<Phone>> = Mutex::new(Vec::new());
@@ -84,7 +85,7 @@ pub fn host() {
                         Some(p) => (p.pad, p.seen) = (pad, now),
                         None => {
                             eprintln!("[phone] iPhone controller connected from {addr}");
-                            phones.push(Phone { addr, pad, seen: now, player: None, acked: None });
+                            phones.push(Phone { addr, pad, seen: now, player: None, acked: None, web: false });
                         }
                     }
                 }
@@ -92,11 +93,11 @@ pub fn host() {
             phones.retain(|p| {
                 let live = now.duration_since(p.seen) < TIMEOUT;
                 if !live {
-                    eprintln!("[phone] iPhone controller at {} disconnected", p.addr);
+                    eprintln!("[phone] {} controller at {} disconnected", if p.web { "browser" } else { "iPhone" }, p.addr);
                 }
                 live
             });
-            for p in phones.iter_mut() {
+            for p in phones.iter_mut().filter(|p| !p.web) {
                 let Some(player) = p.player else { continue };
                 if p.acked.is_none_or(|(at, was)| was != player || now.duration_since(at) > Duration::from_millis(500)) {
                     let mut ack = [0u8; 5];
@@ -138,6 +139,33 @@ pub fn set_player(addr: SocketAddr, player: u8) {
     if let Some(p) = PHONES.lock().unwrap().iter_mut().find(|p| p.addr == addr) {
         p.player = Some(player);
     }
+}
+
+pub fn feed(addr: SocketAddr, pad: Pad) {
+    let mut phones = PHONES.lock().unwrap();
+    match phones.iter_mut().find(|p| p.addr == addr) {
+        Some(p) => (p.pad, p.seen) = (pad, Instant::now()),
+        None => {
+            eprintln!("[phone] browser controller connected from {addr}");
+            phones.push(Phone { addr, pad, seen: Instant::now(), player: None, acked: None, web: true });
+        }
+    }
+}
+
+pub fn player(addr: SocketAddr) -> Option<u8> {
+    PHONES.lock().unwrap().iter().find(|p| p.addr == addr).and_then(|p| p.player)
+}
+
+pub fn forget(addr: SocketAddr) {
+    let mut phones = PHONES.lock().unwrap();
+    if phones.iter().any(|p| p.addr == addr) {
+        eprintln!("[phone] browser controller at {addr} disconnected");
+        phones.retain(|p| p.addr != addr);
+    }
+}
+
+pub fn is_web(addr: SocketAddr) -> bool {
+    PHONES.lock().unwrap().iter().any(|p| p.addr == addr && p.web)
 }
 
 #[cfg(target_os = "ios")]

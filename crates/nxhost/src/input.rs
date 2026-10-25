@@ -263,7 +263,7 @@ impl Pads {
                 }
                 let name = match slot {
                     Some(c) => Some(c.vendorName().map_or("Controller".into(), |n| n.to_string())),
-                    None if remote.is_some() => Some("iPhone".into()),
+                    None if remote.is_some() => Some(if self.phones[i].is_some_and(crate::remote::is_web) { "Browser" } else { "iPhone" }.into()),
                     None if i == 0 && cfg!(target_os = "ios") => Some("Touch controls".into()),
                     None if i == 0 => Some("Keyboard".into()),
                     None if virtual_pad => Some("Virtual controller".into()),

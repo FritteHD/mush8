@@ -20,6 +20,7 @@ mod shm;
 mod stubs;
 mod nvn;
 mod svc;
+mod webpad;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -249,6 +250,9 @@ fn start(args: Args) -> Result<()> {
 
     if remote::enabled() {
         remote::host();
+        if webpad::enabled() {
+            webpad::host();
+        }
     }
     diag::install_handlers();
     guest::init_tsd();
