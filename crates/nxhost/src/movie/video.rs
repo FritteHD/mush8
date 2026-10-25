@@ -51,7 +51,7 @@ impl FrameSource {
                 None => return false,
             }
         }
-        let mut frame = match crate::kernel::blocking(|| self.worker.frames.recv_timeout(std::time::Duration::from_millis(250))) {
+        let mut frame = match self.worker.frames.recv_timeout(std::time::Duration::from_millis(250)) {
             Ok(f) => f,
             Err(RecvTimeoutError::Disconnected) => return false,
             Err(RecvTimeoutError::Timeout) => {
@@ -94,7 +94,7 @@ fn spawn(source: Source, us: i64, stride: usize, rows: usize) -> Option<Worker> 
             }
         })
         .ok()?;
-    crate::kernel::blocking(|| ready.recv_timeout(std::time::Duration::from_secs(5))).ok()?.then_some(Worker { frames, recycle })
+    ready.recv_timeout(std::time::Duration::from_secs(5)).ok()?.then_some(Worker { frames, recycle })
 }
 
 fn run_webm(movie: &super::webm::Movie, us: i64, tx: &SyncSender<Vec<u8>>, spare: &Receiver<Vec<u8>>, stride: usize, rows: usize) {
