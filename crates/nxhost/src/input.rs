@@ -99,7 +99,6 @@ pub struct Motion {
     pub gyro: [f32; 3],
 }
 
-// each player's latest motion, and whether it comes from a gamepad (true) or a phone (false)
 pub static MOTION: std::sync::Mutex<[Option<(Motion, bool)>; MAX_PLAYERS]> = std::sync::Mutex::new([None; MAX_PLAYERS]);
 
 fn motion_enabled() -> bool {

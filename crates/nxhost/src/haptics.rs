@@ -46,9 +46,6 @@ const RUMBLE_MS: u32 = 2000;
 const RESEND: Duration = Duration::from_millis(500);
 
 #[cfg(target_os = "macos")]
-// Like the yuzu-family SDL driver (citron sdl_driver.cpp RumblePlay): the low band drives the
-// low-frequency motor and the high band the high-frequency one, weaker as the frequency rises.
-// The strength stays linear, without the emulator's boost of weak values.
 fn sdl_strength(v: [Value; 2]) -> (u16, u16) {
     let band = |amp: fn(&Value) -> (f32, f32), start: f32, width: f32| {
         let s = v.iter().map(amp).map(|(a, f)| {
@@ -65,8 +62,6 @@ fn resend_due(last: Option<Instant>, now: Instant) -> bool {
     last.is_none_or(|t| now.duration_since(t) >= RESEND)
 }
 
-// Whether to send `strength` now, and the new state: the strength in force and when it was last sent.
-// The state is kept even when a send fails, so a held rumble is retried at the next resend.
 #[cfg(target_os = "macos")]
 type SdlState = Option<((u16, u16), Instant)>;
 
@@ -311,13 +306,10 @@ mod tests {
     fn sdl_strength_follows_bands() {
         let v = |amp_low, freq_low, amp_high, freq_high| Value { amp_low, freq_low, amp_high, freq_high };
         assert_eq!(sdl_strength([Value::IDLE, Value::IDLE]), (0, 0));
-        // low band drives the low-frequency motor, high band the high-frequency one, linearly
         assert_eq!(sdl_strength([v(1.0, 140.0, 0.0, 200.0), Value::IDLE]), (65535, 0));
         assert_eq!(sdl_strength([Value::IDLE, v(0.0, 140.0, 1.0, 200.0)]), (0, 65535));
         assert_eq!(sdl_strength([v(0.25, 140.0, 0.0, 200.0), Value::IDLE]), (16384, 0));
-        // both sides share one pad: the stronger side wins per band
         assert_eq!(sdl_strength([v(0.5, 140.0, 0.0, 200.0), v(0.25, 140.0, 0.0, 200.0)]), (32768, 0));
-        // higher frequencies feel weaker, down to 30%
         assert_eq!(sdl_strength([v(1.0, 540.0, 1.0, 900.0), Value::IDLE]), (19661, 19661));
         assert_eq!(sdl_strength([v(1.0, 340.0, 0.0, 200.0), Value::IDLE]), (32768, 0));
         let nan = Value { amp_low: f32::NAN, ..Value::IDLE };
@@ -326,7 +318,6 @@ mod tests {
 
     #[test]
     fn rumble_outlasts_a_late_resend() {
-        // a wake just before a resend can push the next one to almost two resend periods
         assert!(Duration::from_millis(RUMBLE_MS as u64) > RESEND * 2 + Duration::from_millis(500));
     }
 
@@ -336,7 +327,6 @@ mod tests {
         let s = (1000, 2000);
         assert_eq!(sdl_step(None, (0, 0), t), (false, None));
         assert_eq!(sdl_step(None, s, t), (true, Some((s, t))));
-        // the same value is sent again once the resend is due, whatever happened to the last send
         assert_eq!(sdl_step(Some((s, t)), s, t + Duration::from_millis(100)), (false, Some((s, t))));
         let later = t + RESEND;
         assert_eq!(sdl_step(Some((s, t)), s, later), (true, Some((s, later))));

@@ -55,12 +55,6 @@ struct Engine {
     held: Held,
 }
 
-// A draw is skipped while its shader or pipeline compiles in the background. A frame missing draws can show what a
-// layer was meant to hide: the first race frame behind the loading screen loses about a fifth of its draws and the
-// race flashes through, and a white menu fade that loses 4 of its 143 draws turns grey. A frame missing at least 2% of
-// its draws is held back and the last complete image stays on screen. Race frames miss at most about 1% and are
-// shown, and a frame is never held back after a held one, so holding costs at most one repeated frame (16.7 ms at
-// 60 fps).
 #[derive(Default)]
 struct Held {
     last: bool,

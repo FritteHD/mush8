@@ -539,7 +539,6 @@ fn make_sampler(b: Option<&[u8; 0x60]>) -> objc2::rc::Retained<Sampler> {
         } else {
             MTLSamplerBorderColor::TransparentBlack
         });
-        // the game relies on negative biases to keep its nearest-mip samplers sharp (lodBias needs macOS / iOS 26)
         let bias = f32_at(b, 0x24);
         if bias.is_finite() && bias != 0.0 && objc2::runtime::NSObjectProtocol::respondsToSelector(&*d, objc2::sel!(setLodBias:)) {
             d.setLodBias(bias.clamp(-16.0, 15.99));

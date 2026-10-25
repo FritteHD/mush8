@@ -424,7 +424,6 @@ fn present_params(tex: &Texture, flip: bool) -> (PresentParams, f64) {
     (p, (w / h) as f64)
 }
 
-// None keeps the image on screen as it is, while still counting and pacing the frame
 pub fn present(tex: Option<&Texture>, flip: bool) {
     #[cfg(target_os = "ios")]
     if !ios::ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {

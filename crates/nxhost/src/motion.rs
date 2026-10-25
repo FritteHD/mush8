@@ -1,11 +1,8 @@
-// Fusion is a Rust port of MotionInput from the yuzu Emulator Project
-// (src/hid_core/frontend/motion_input.cpp, as kept in citron-neo/emulator):
-//   SPDX-FileCopyrightText: Copyright 2020 yuzu Emulator Project
-//   SPDX-License-Identifier: GPL-2.0-or-later
-// It is used here under GPL-3.0, Mush8's license. The port leaves out ResetOrientation and calibration mode.
-// It is a Mahony filter that corrects the gyro with gravity.
-// Units are the game's: acceleration in g, gyro in turns per second, time in seconds.
-
+// Mush8 - motion.rs
+// Constantin Clerc (c22dev) - 0.1
+// Fusion is a Rust port of MotionInput from the yuzu Emulator Project (src/hid_core/frontend/motion_input.cpp)
+// SPDX-FileCopyrightText: Copyright 2020 yuzu Emulator Project
+// SPDX-License-Identifier: GPL-2.0-or-later
 const KP: f32 = 0.3;
 const KI: f32 = 0.005;
 const GYRO_THRESHOLD: f32 = 0.007;
@@ -130,7 +127,6 @@ impl Fusion {
     }
 }
 
-// The host's original gyro-only orientation, kept for phones (the iOS device and iPhone controllers).
 #[derive(Clone, Copy)]
 pub struct GyroOnly {
     angle: V3,
@@ -181,7 +177,6 @@ impl GyroOnly {
     }
 }
 
-// Gamepads get the fusion; phones keep the original orientation, which nobody could test with the fusion.
 #[derive(Clone, Copy)]
 pub enum Orientation {
     Pad(Fusion),
@@ -220,7 +215,6 @@ impl Orientation {
         }
     }
 
-    // the gyro value the game reads: processed by the fusion for gamepads, as measured for phones
     pub fn gyro(&self, raw: V3) -> V3 {
         match self {
             Orientation::Pad(f) => f.gyro(),
@@ -233,8 +227,6 @@ impl Orientation {
 mod tests {
     use super::*;
 
-    // expected values come from the yuzu-family MotionInput (citron src/hid_core/frontend/motion_input.cpp),
-    // built and run with the same samples
     fn run(f: &mut Fusion, n: usize, accel: [f32; 3], gyro: [f32; 3]) {
         for _ in 0..n {
             f.update(accel, gyro, 0.008333);
@@ -251,7 +243,6 @@ mod tests {
         for _ in 0..120 {
             o.update([0.0, 0.0, -1.0], [0.25, 0.0, 0.0], false, 0.008333);
         }
-        // a quarter turn around X, with no pull back toward gravity
         assert!(close(o.orientation().as_flattened(), &[1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0]));
         assert!(close(&o.rotation(), &[0.25, 0.0, 0.0]));
         assert!(close(&o.gyro([0.25, 0.0, 0.0]), &[0.25, 0.0, 0.0]));

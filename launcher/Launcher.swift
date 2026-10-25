@@ -174,7 +174,6 @@ func checks(_ s: Settings) -> [Check] {
         Check(id: "Update", ok: has(s.update), detail: has(s.update) ? s.update : "not found"),
         Check(id: "Booster Course Pass", ok: has(s.dlc), detail: has(s.dlc) ? s.dlc : "none", optional: true),
         Check(id: "Game code for this Mac", ok: gameCodeReady(in: f), detail: "work/v-upd/patched"),
-        // an empty index means the Metal Toolchain was missing: the game still runs, compiling shaders while it plays
         Check(id: "Precompiled shaders", ok: (shaders ?? 0) > 0,
               detail: shaders == 0 ? "none, install the Metal Toolchain and Prepare again" : "work/shader_cache.noindex", optional: shaders == 0),
         Check(id: "Console Keys", ok: has(s.keys), detail: has(s.keys) ? s.keys : "not found"),
@@ -377,7 +376,6 @@ struct LauncherView: View {
         }
     }
 
-    // an option's name with its explanation under it, in the option's own row
     func labeled(_ title: String, _ detail: String?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)

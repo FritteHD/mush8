@@ -136,8 +136,6 @@ const RULES: &[Rule] = &[
     Rule { layout: "mn_GrprClassSlct_00", panes: &["N_Capture_00"], op: Op::Zoom },
     Rule { layout: "bt_TitleLoading_00", panes: &["N_CheckBG_00"], op: Op::Cover },
     Rule { layout: "cm_LoadWin_00", panes: &["N_All_00"], op: Op::Cover },
-    // the game puts each unlock gift on its slot's on-screen position, which is already narrowed: keep the page
-    // root as is (STRETCHED_ROOTS) and narrow only the gifts
     Rule {
         layout: "mn_Page_Present_Parts",
         panes: &[
@@ -523,8 +521,6 @@ mod tests {
         );
     }
 
-    // The game moves each gift onto the slot it unwraps, using the slot's position on screen. That position is
-    // already narrowed, so the page must not narrow it again: only the gift itself is narrowed, around its centre.
     #[test]
     fn unlock_gifts_follow_their_slot() {
         let ratio = 2.17;
@@ -546,9 +542,6 @@ mod tests {
         }
     }
 
-    // The end-of-cup highlight reel shows rc_HighlightAward_00 inside this page. That part already keeps its blurred
-    // grey cover and its scrolling flag bands full width and narrows only its content, so the page must not narrow
-    // it again, or the cover and bands shrink to 16:9 and the content is narrowed twice.
     #[test]
     fn cup_highlight_reel_page_is_not_narrowed() {
         let mut d = layout(&[

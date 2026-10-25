@@ -314,8 +314,6 @@ impl Service for LibraryApplet {
     }
 }
 
-// ControllerSupportResultInfo: player count, selected id, result. The applet itself always succeeds,
-// the SDK turns result 2 into the canceled result it returns to the game
 fn controller_applet(input: &[Vec<u8>]) -> Vec<u8> {
     let arg = input.get(2);
     let min = arg.and_then(|a| a.first()).map_or(1, |&v| (v as i8).max(1)) as usize;

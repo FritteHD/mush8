@@ -1,5 +1,5 @@
-// SDL is set up and polled only on the HID service thread that calls Pads::poll.
-// SDL_RumbleGamepad is the one call from another thread (haptics), and SDL locks its joystick state for it.
+// Mush8 - sdl.rs
+// Constantin Clerc (c22dev) - 0.1
 use crate::input::*;
 use sdl3_sys::everything::*;
 
@@ -8,7 +8,6 @@ const TRIGGER_PRESSED: i16 = 16384;
 pub fn init() -> bool {
     static OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *OK.get_or_init(|| unsafe {
-        // SDL would catch SIGINT and SIGTERM and only queue a quit event, which we never pump
         SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, c"1".as_ptr());
         if !SDL_Init(SDL_INIT_GAMEPAD) {
             eprintln!("[input] SDL init failed: {}", error());
@@ -38,7 +37,6 @@ pub fn connected() -> Vec<SDL_JoystickID> {
     }
 }
 
-// SDL checks that the gamepad object is still valid, so a pad closed by the input thread just returns false.
 pub fn rumble(id: SDL_JoystickID, low: u16, high: u16, ms: u32) -> bool {
     unsafe {
         let gamepad = SDL_GetGamepadFromID(id);
@@ -46,7 +44,6 @@ pub fn rumble(id: SDL_JoystickID, low: u16, high: u16, ms: u32) -> bool {
     }
 }
 
-// Remembers pads that SDL lists but cannot open, so they are tried once and not on every poll.
 #[derive(Default)]
 pub struct OpenOnce {
     failed: Vec<SDL_JoystickID>,
@@ -183,8 +180,6 @@ pub fn axis(v: i16) -> f32 {
     (v as f32 / 32767.0).clamp(-1.0, 1.0)
 }
 
-// Converts SDL gamepad axes to the ones the game reads, the same way as the yuzu-family emulators
-// (citron src/input_common/drivers/sdl_driver.cpp UpdateMotion). The game wants gravity in g, SDL gives the felt force in m/s².
 pub fn motion_from(accel: [f32; 3], gyro: [f32; 3]) -> Motion {
     let g = SDL_STANDARD_GRAVITY;
     Motion { accel: [-accel[0] / g, accel[2] / g, -accel[1] / g], gyro: [gyro[0], -gyro[2], gyro[1]] }
@@ -213,7 +208,6 @@ mod tests {
         assert_eq!(once.open(a, || { calls += 1; Some(()) }), None);
         assert_eq!(calls, 1);
         assert_eq!(once.open(b, || Some(())), Some(()));
-        // a pad that left is forgotten
         once.keep(&[b]);
         assert_eq!(once.open(a, || Some(())), Some(()));
     }
@@ -247,7 +241,6 @@ mod tests {
         assert_eq!(axis(-32768), -1.0);
     }
 
-    // the same conversion as the yuzu-family SDL driver (citron src/input_common/drivers/sdl_driver.cpp UpdateMotion)
     #[test]
     fn motion_matches_emulator_axes() {
         let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
