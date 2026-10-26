@@ -100,7 +100,9 @@ fn socket(mut s: TcpStream, peer: SocketAddr, key: &str, mut buf: Vec<u8>) {
             match op {
                 0x1 => {
                     if let Some(pad) = parse(&payload) {
-                        remote::feed(peer, pad);
+                        if !remote::feed(peer, pad) {
+                            break 'open;
+                        }
                         heard = Instant::now();
                     }
                 }
@@ -283,14 +285,13 @@ mod tests {
         ws.write_all(&masked(0x1, b"129,0.500,-1.000")).unwrap();
         let fed = (0..100).find_map(|_| {
             std::thread::sleep(Duration::from_millis(10));
-            remote::connected().into_iter().find(|(a, _)| *a == me)
+            remote::connected().into_iter().find(|(d, _)| *d == remote::device_id(me))
         });
         let pad = fed.expect("pad never reached remote").1;
         assert_eq!((pad.buttons, pad.sticks), (129, [0.5, -1.0, 0.0, 0.0]));
-        assert!(remote::is_web(me));
-        assert_eq!(remote::session(me), Some(remote::device_id(me)));
+        assert!(remote::is_web(remote::device_id(me)));
 
-        remote::set_player(me, 2);
+        remote::set_player(remote::device_id(me), 2);
         ws.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let mut got = Vec::new();
         let mut chunk = [0u8; 64];
@@ -303,7 +304,7 @@ mod tests {
         ws.write_all(&masked(0x8, b"")).unwrap();
         let gone = (0..100).any(|_| {
             std::thread::sleep(Duration::from_millis(10));
-            !remote::connected().iter().any(|(a, _)| *a == me)
+            !remote::connected().iter().any(|(d, _)| *d == remote::device_id(me))
         });
         assert!(gone, "pad still listed after the socket closed");
     }

@@ -196,22 +196,28 @@ const HOLD: std::time::Duration = std::time::Duration::from_secs(120);
 
 type Kept = [Option<(u64, std::time::Instant)>; MAX_PLAYERS];
 
-fn open(slots: &[Option<Ctl>; MAX_PLAYERS], phones: &[Option<std::net::SocketAddr>; MAX_PLAYERS]) -> [bool; MAX_PLAYERS] {
+fn open(slots: &[Option<Ctl>; MAX_PLAYERS], phones: &[Option<u64>; MAX_PLAYERS]) -> [bool; MAX_PLAYERS] {
     std::array::from_fn(|i| slots[i].is_none() && phones[i].is_none())
 }
 
-fn pick(open: [bool; MAX_PLAYERS], kept: &Kept, session: Option<u64>) -> Option<usize> {
+fn pick(open: [bool; MAX_PLAYERS], kept: &Kept, device: Option<u64>) -> Option<usize> {
     let free = || (0..MAX_PLAYERS).filter(move |&i| open[i]);
-    let mine = |i: &usize| session.is_some() && kept[*i].is_some_and(|(k, _)| Some(k) == session);
-    let alone = open.iter().all(|&o| o);
-    let held = |i: &usize| !alone && kept[*i].is_some_and(|(_, at)| at.elapsed() < HOLD);
-    free().find(mine).or_else(|| free().find(|i| !held(i))).or_else(|| free().min_by_key(|&i| kept[i].map(|(_, at)| at)))
+    let other = |i: usize| kept[i].is_some_and(|(k, _)| Some(k) != device);
+    let held = |i: usize| other(i) && kept[i].is_some_and(|(_, at)| at.elapsed() < HOLD);
+    let returning = device.is_some_and(|d| kept.iter().flatten().any(|&(k, _)| k == d));
+    let first = if returning {
+        free().find(|&i| !other(i))
+    } else if open.iter().all(|&o| o) {
+        free().next()
+    } else {
+        None
+    };
+    first.or_else(|| free().find(|&i| !held(i))).or_else(|| free().min_by_key(|&i| kept[i].map(|(_, at)| at)))
 }
 
 pub struct Pads {
     slots: [Option<Ctl>; MAX_PLAYERS],
-    phones: [Option<std::net::SocketAddr>; MAX_PLAYERS],
-    sessions: [Option<u64>; MAX_PLAYERS],
+    phones: [Option<u64>; MAX_PLAYERS],
     kept: Kept,
     extra: usize,
     fill: usize,
@@ -227,7 +233,6 @@ impl Pads {
         Self {
             slots: Default::default(),
             phones: Default::default(),
-            sessions: Default::default(),
             kept: Default::default(),
             extra,
             fill: 0,
@@ -272,10 +277,9 @@ impl Pads {
             }
             let phones = crate::remote::connected();
             for (i, s) in self.phones.iter_mut().enumerate() {
-                if s.is_some_and(|a| !phones.iter().any(|(p, _)| *p == a)) {
+                if s.is_some_and(|d| !phones.iter().any(|(p, _)| *p == d)) {
                     eprintln!("[input] iPhone controller left player {}", i + 1);
-                    *s = None;
-                    self.kept[i] = self.sessions[i].take().map(|k| (k, std::time::Instant::now()));
+                    self.kept[i] = s.take().map(|d| (d, std::time::Instant::now()));
                     changed = true;
                 }
             }
@@ -316,21 +320,22 @@ impl Pads {
                 self.kept[i] = None;
                 changed = true;
             }
-            for &(addr, _) in &phones {
-                if self.phones.contains(&Some(addr)) {
+            for &(device, _) in &phones {
+                if self.phones.contains(&Some(device)) {
                     continue;
                 }
-                let session = crate::remote::session(addr);
-                let Some(i) = pick(open(&self.slots, &self.phones), &self.kept, session) else {
-                    crate::remote::set_player(addr, 0);
+                let Some(i) = pick(open(&self.slots, &self.phones), &self.kept, Some(device)) else {
+                    crate::remote::set_player(device, 0);
                     continue;
                 };
-                let back = session.is_some() && self.kept[i].is_some_and(|(k, _)| Some(k) == session);
+                let back = self.kept[i].is_some_and(|(k, _)| k == device);
                 eprintln!("[input] iPhone controller is player {}{}", i + 1, if back { " again" } else { "" });
-                self.phones[i] = Some(addr);
-                self.sessions[i] = session;
+                self.phones[i] = Some(device);
                 self.kept[i] = None;
-                crate::remote::set_player(addr, i as u8 + 1);
+                for k in self.kept.iter_mut().filter(|k| k.is_some_and(|(d, _)| d == device)) {
+                    *k = None;
+                }
+                crate::remote::set_player(device, i as u8 + 1);
                 changed = true;
             }
             if changed {
@@ -602,6 +607,19 @@ mod tests {
         assert_eq!(pick(open, &kept, None), Some(1));
         assert_eq!(pick(open, &kept, Some(8)), Some(3));
         assert_eq!(pick([false; MAX_PLAYERS], &kept, Some(7)), None);
+    }
+
+    #[test]
+    fn returning_phones_fill_a_lower_empty_slot() {
+        let now = std::time::Instant::now();
+        let mut kept: Kept = Default::default();
+        let mut open = [true; MAX_PLAYERS];
+        open[0] = false;
+        kept[2] = Some((8, now));
+        assert_eq!(pick(open, &kept, Some(8)), Some(1));
+        kept[1] = Some((7, now.checked_sub(HOLD * 2).unwrap()));
+        assert_eq!(pick(open, &kept, Some(8)), Some(2));
+        assert_eq!(pick(open, &kept, Some(5)), Some(1));
     }
 
     #[test]
